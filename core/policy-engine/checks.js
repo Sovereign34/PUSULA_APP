@@ -1,4 +1,4 @@
-// policy-engine/checks.js
+// core/policy-engine/checks.js
 // Amaç:    Executor→Critic onayından geçen kampanya brief'ini Meta Marketing API'ye
 //          göndermeden önce deterministik, sabit kurallarla tek tek denetler.
 // Bağlı:   runPolicyEngine.js (bu dosyadaki 7 fonksiyonu sabit sırayla çağırır),
