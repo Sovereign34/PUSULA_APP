@@ -1,4 +1,4 @@
-// critic/revisionLoop.test.js
+// core/critic/revisionLoop.test.js
 // checks.test.js / gate.test.js / envelopeBuilder.test.js ile aynı desen:
 // plain Node assert, `node` ile doğrudan çalıştırılabilir.
 
