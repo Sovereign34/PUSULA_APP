@@ -1,4 +1,4 @@
-// validation/envelopeBuilder.js
+// core/validation/envelopeBuilder.js
 // Amaç:    Trigger node'un girdisi (§1.1 campaign_brief_request) ile Executor
 //          node'un çıktısını (§1.2, zaten kendi içinde validateExecutorOutput
 //          ile doğrulanmış) alıp ARCHITECTURE.md §1.5 kararlı şemasına uyan
