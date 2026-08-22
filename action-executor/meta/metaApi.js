@@ -1,4 +1,4 @@
-// meta-api/metaApi.js
+// action-executor/meta/metaApi.js
 // Amaç:    Execution Gate'in ürettiği Execution Token'ı TÜKETİR — TTL ve
 //          policy_hash doğrulamasını yapar, sonra Campaign'i ve ardından
 //          Ad Set'i Meta Marketing API'ye PAUSED durumunda oluşturur
