@@ -1,4 +1,4 @@
-// executor/executorNode.js
+// core/executor/executorNode.js
 // ARCHITECTURE.md §1.2 çıktı sözleşmesini üretir. `llmClient` enjekte edilir
 // (gate.js/metaApi.js deseniyle aynı) — gerçek Claude API bağlantısı kullanıcının
 // kendi ortamında bağımsız doğrulanacak, burada mock client ile test edilir.
