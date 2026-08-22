@@ -1,4 +1,4 @@
-// human-notification/humanNotificationNode.js
+// core/human-notification/humanNotificationNode.js
 // Amaç:    Kampanya PAUSED durumundayken insan onayını yönetir — kreatif
 //          yüklendi mi kontrolü (AMC-8) + WhatsApp üzerinden ONAYLA/REDDET
 //          onayının çözümlenmesi (R-IG-14, MASTER_PLAN v3.10, kanal: WhatsApp).
