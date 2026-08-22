@@ -1,4 +1,4 @@
-// validation/envelopeBuilder.test.js
+// core/validation/envelopeBuilder.test.js
 // checks.test.js / gate.test.js ile aynı desen: plain Node assert, `node`
 // ile doğrudan çalıştırılabilir (test framework bağımlılığı yok).
 
