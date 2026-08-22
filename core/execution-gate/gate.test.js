@@ -1,4 +1,4 @@
-// execution-gate/gate.test.js
+ // core/execution-gate/gate.test.js
 // Amaç:    gate.js'teki 6 fonksiyonun her biri için geçerli/sınır/aşım/null
 //          senaryolarını test eder — checks.test.js ile aynı disiplin (AGENT.md
 //          KOD KALİTESİ KURALLARI madde 6).
