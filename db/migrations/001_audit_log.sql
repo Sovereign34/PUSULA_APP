@@ -1,3 +1,4 @@
+--db/migrations/001_audit_log.sql
 -- 001_audit_log.sql
 -- Kaynak: PUSULA_OS/AUDIT_SCHEMA.md §1 — birebir alındı.
 -- Not: final_outcome / policy_decision / append-only ilkesi CORE.md §4
