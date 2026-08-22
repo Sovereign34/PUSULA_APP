@@ -1,4 +1,4 @@
-// critic/revisionLoop.js
+// core/critic/revisionLoop.js
 // Amaç:    DUAL-AI spec §8 (Critic Revision Loop) — Critic `request_revision`
 //          dönünce n8n akışı kararı Executor'a geri gönderir. Bu modül DÖNGÜYÜ
 //          KENDİSİ ÇALIŞTIRMAZ (n8n'in IF/loop node'u yönetir, AGENT.md/MASTER_PLAN
