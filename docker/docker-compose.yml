@@ -1,4 +1,4 @@
-# docker-compose.yml
+# dıcker/docker-compose.yml
 # Hetzner CX22 üzerinde n8n self-hosted + Postgres kurulumu.
 # Kaynak: MASTER_PLAN.md v5.7 (B13 kapandı — Hetzner CX22 kararı),
 #         CONFIG_SCHEMA.md §1.4 (n8n değişkenleri).
