@@ -1,4 +1,4 @@
-// human-notification/humanNotificationNode.test.js
+// core/human-notification/humanNotificationNode.test.js
 // Amaç:    humanNotificationNode.js'in birim testleri — checks.test.js/
 //          gate.test.js ile aynı desen (geçerli/sınır/aşım/null).
 // Bağlı:   humanNotificationNode.js
