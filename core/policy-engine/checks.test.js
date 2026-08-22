@@ -1,4 +1,4 @@
-// policy-engine/checks.test.
+//core/policy-engine/checks.test.js
 // Amaç:    checks.js'teki 7 fonksiyonun her birini geçerli/sınır/aşım/null
 //          senaryolarıyla doğrular (AGENT.md Kod Kalitesi Kural 6).
 // Bağlı:   checks.js (test edilen dosya) — checks.js'e yeni fonksiyon eklenirse
