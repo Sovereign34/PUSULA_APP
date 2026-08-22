@@ -1,4 +1,4 @@
-// critic/criticNode.js
+// core/critic/criticNode.js
 // ARCHITECTURE.md §1.3 çıktı sözleşmesini üretir. `llmClient` enjekte edilir
 // (executorNode.js/gate.js/metaApi.js deseniyle aynı) — gerçek GPT API bağlantısı
 // kullanıcının kendi ortamında bağımsız doğrulanacak, burada mock client ile test
