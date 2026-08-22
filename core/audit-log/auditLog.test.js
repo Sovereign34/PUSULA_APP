@@ -1,4 +1,4 @@
-// audit-log/auditLog.test.js
+// core/audit-log/auditLog.test.js
 // Amaç:    auditLog.js'teki 4 fonksiyonun birim testleri — TEST_MATRIX.md'ye
 //          işlenecek (checkpoint sonrası).
 // Bağlı:   auditLog.js
