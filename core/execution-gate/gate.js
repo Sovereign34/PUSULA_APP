@@ -1,4 +1,4 @@
-// execution-gate/gate.js
+ // core/execution-gate/gate.js
 // Amaç:    Policy Engine'in approved:true çıktığını tüketip bir Execution Token
 //          üretir — Meta API'ye "consequential" çağrı yapma yetkisi sadece bu
 //          token'ı üreten koddan geçer. Bu oturum sadece token ÜRETİMİNİ kapsar
