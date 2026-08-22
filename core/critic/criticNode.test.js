@@ -1,4 +1,4 @@
-// critic/criticNode.test.js
+ // core/critic/criticNode.test.js
 // Amaç:    criticNode.js'teki fonksiyonların birim testleri — TEST_MATRIX.md'ye
 //          işlenecek (checkpoint sonrası).
 // Bağlı:   criticNode.js
