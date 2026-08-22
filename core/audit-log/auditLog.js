@@ -1,4 +1,4 @@
-// audit-log/auditLog.js
+//core/audit-log/auditLog.js
 // Amaç:    MASTER_PLAN §5 audit şemasını + DecisionEnvelope'un Faz-3-zorunlu
 //          alanlarını (actor, input_context_hash, audit.record_hash —
 //          ARCHITECTURE.md §1.5 v1.4) + zincirleme previous_hash'i
