@@ -1,12 +1,27 @@
 // core/critic/criticNode.js
-// ARCHITECTURE.md §1.3 çıktı sözleşmesini üretir. `llmClient` enjekte edilir
-// (executorNode.js/gate.js/metaApi.js deseniyle aynı) — gerçek GPT API bağlantısı
-// kullanıcının kendi ortamında bağımsız doğrulanacak, burada mock client ile test
-// edilir. Fail-closed: LLM çağrısı/parse/şema doğrulama zincirinin herhangi bir
-// adımı başarısız olursa verdict üretilmez, Policy Engine'e hiçbir şey gitmez.
+// Amaç:    ARCHITECTURE.md §1.3 çıktı sözleşmesini üretir. Platform-agnostik
+//          Core node — prompt'taki platform etiketi çağıran modülden
+//          `platformConfig.promptLabel` ile enjekte edilir.
+// Bağlı:   executor/executorNode.js (bu node'un girdisi Executor çıktısı),
+//          policy-engine/runPolicyEngine.js (bu node'un çıktısını tüketir),
+//          çağıran modülün platformConfig'i (executorNode.js ile aynı nesne).
+// Risk:    platformConfig eksikse prompt platform belirtmeden üretilir —
+//          bu durum LLM'in hangi platform için değerlendirme yaptığını
+//          belirsizleştirir, fail-closed olarak durdurulur.
+// Dokunma: platformConfig şeklini değiştirmeden önce executorNode.js'i ve
+//          B18 KARAR BİLDİRİMİ'ni kontrol et — iki node aynı platformConfig
+//          nesnesini kullanmalı.
+//
+// [B18, Session 26 bulgusu] Prompt metnindeki "Instagram kampanya brief'ini"
+// ifadesi kod seviyesinden çıkarıldı, platformConfig.promptLabel'e taşındı.
+// Bu dosyada validateCriticOutput zaten platform-agnostikti (check alan
+// adları jenerik) — değişmedi.
+//
 // Not: Critic'in Executor'dan farklı model ailesinden olması (AMC-3) deploy-zamanı
 // bir config kararıdır (IG_ADS_CRITIC_MODEL_ID != IG_ADS_EXECUTOR_MODEL_ID) —
 // bu dosyanın runtime kapsamı dışında, bkz. DEPENDENCIES.md §3.
+// Fail-closed: LLM çağrısı/parse/şema doğrulama zincirinin herhangi bir
+// adımı başarısız olursa verdict üretilmez, Policy Engine'e hiçbir şey gitmez.
 
 const VALID_VERDICTS = ["approve", "reject", "request_revision"];
 const CHECK_FIELDS = [
@@ -17,10 +32,10 @@ const CHECK_FIELDS = [
   "utm_format_valid",
 ];
 
-function buildCriticPrompt(executorOutput) {
+function buildCriticPrompt(executorOutput, platformConfig) {
   const cb = executorOutput.campaign_brief;
   return [
-    "Aşağıdaki Instagram kampanya brief'ini ARCHITECTURE.md §1.3 şemasına birebir",
+    `Aşağıdaki ${platformConfig.promptLabel} kampanya brief'ini ARCHITECTURE.md §1.3 şemasına birebir`,
     "uyan JSON formatında değerlendir. Sadece JSON döndür, başka metin ekleme.",
     "",
     `objective: ${cb.objective}`,
@@ -59,6 +74,7 @@ function parseCriticOutput(rawText) {
 }
 
 // §1.3 şema doğrulaması — LLM çıktısına körü körüne güvenilmez.
+// Zaten platform-agnostikti — B18 kapsamında değişiklik yok.
 function validateCriticOutput(output) {
   const errors = [];
   if (output === null || typeof output !== "object") {
@@ -88,8 +104,13 @@ function validateCriticOutput(output) {
 
 // Koordinasyon. Fail-closed: herhangi bir aşama başarısız olursa Policy Engine'e
 // hiçbir çıktı gitmez (executorNode.js'in runExecutorNode deseniyle aynı).
-function runCriticNode(executorOutput, llmClient) {
-  const prompt = buildCriticPrompt(executorOutput);
+// [B18] platformConfig eksikse fail-closed durur.
+function runCriticNode(executorOutput, llmClient, platformConfig) {
+  if (!platformConfig || typeof platformConfig.promptLabel !== "string" || !platformConfig.promptLabel) {
+    return { success: false, stage: "platform_config", errors: ["platformConfig.promptLabel eksik"] };
+  }
+
+  const prompt = buildCriticPrompt(executorOutput, platformConfig);
 
   const modelResult = callCriticModel(prompt, llmClient);
   if (!modelResult.success) {
