@@ -1,9 +1,19 @@
- // core/critic/criticNode.test.js
+// core/critic/criticNode.test.js
 // Amaç:    criticNode.js'teki fonksiyonların birim testleri — TEST_MATRIX.md'ye
 //          işlenecek (checkpoint sonrası).
 // Bağlı:   criticNode.js
 // AMC:     AMC-3 (Critic onayı olmadan Policy Engine'e geçilmez)
 // Risk:    Bu dosya geçmeden gerçek n8n'e deploy edilmez (AGENT.md Kural 8).
+//
+// [B18, Session 26 (devam 3)] platformConfig imzasına güncellendi —
+// buildCriticPrompt ve runCriticNode artık platformConfig parametresi
+// alıyor; runCriticNode platformConfig.promptLabel eksikse fail-closed
+// durur (stage: platform_config). Önceki sürümde bu argüman hiç
+// verilmiyordu, bu yüzden runCriticNode çağrılarının TAMAMI
+// stage=platform_config ile başarısız oluyordu (7 test hatası —
+// SESSION_INDEX.md, Session 26 (devam 2)). IG_PLATFORM_CONFIG fixture'ı
+// eklendi, tüm ilgili çağrılara geçildi. validateCriticOutput zaten
+// platform-agnostikti — o testler DEĞİŞMEDİ.
 
 const assert = require('assert');
 const {
@@ -27,6 +37,15 @@ function test(name, fn) {
     failed++;
   }
 }
+
+// [B18] platformConfig fixture — executorNode.test.js ile aynı nesne
+// (iki node aynı platformConfig'i paylaşmalı, criticNode.js dosya başı yorumu).
+const IG_PLATFORM_CONFIG = {
+  platformName: 'instagram',
+  placementValue: 'instagram_only',
+  decisionType: 'ig_campaign_brief',
+  promptLabel: 'Instagram',
+};
 
 const VALID_EXECUTOR_OUTPUT = {
   decision_id: '11111111-1111-4111-8111-111111111111',
@@ -60,17 +79,21 @@ const VALID_CRITIC_OUTPUT_STR = JSON.stringify({
 });
 
 (async () => {
-  // ---- buildCriticPrompt ----
+  // ---- buildCriticPrompt [B18: platformConfig ikinci argüman] ----
   test('buildCriticPrompt: objective prompt\'a giriyor', () => {
-    const p = buildCriticPrompt(VALID_EXECUTOR_OUTPUT);
+    const p = buildCriticPrompt(VALID_EXECUTOR_OUTPUT, IG_PLATFORM_CONFIG);
     assert.ok(p.includes('TRAFFIC'));
   });
   test('buildCriticPrompt: caption_draft prompt\'a giriyor', () => {
-    const p = buildCriticPrompt(VALID_EXECUTOR_OUTPUT);
+    const p = buildCriticPrompt(VALID_EXECUTOR_OUTPUT, IG_PLATFORM_CONFIG);
     assert.ok(p.includes('Yeni bowl menümüzü keşfet'));
   });
+  test('buildCriticPrompt: platformConfig.promptLabel prompt\'a giriyor [B18]', () => {
+    const p = buildCriticPrompt(VALID_EXECUTOR_OUTPUT, IG_PLATFORM_CONFIG);
+    assert.ok(p.includes('Instagram'));
+  });
 
-  // ---- callCriticModel ----
+  // ---- callCriticModel (platformConfig'ten bağımsız — değişmedi) ----
   test('callCriticModel: geçerli client', () => {
     const r = callCriticModel('prompt', { complete: () => VALID_CRITIC_OUTPUT_STR });
     assert.strictEqual(r.success, true);
@@ -92,7 +115,7 @@ const VALID_CRITIC_OUTPUT_STR = JSON.stringify({
     assert.strictEqual(r.success, false);
   });
 
-  // ---- parseCriticOutput ----
+  // ---- parseCriticOutput (platformConfig'ten bağımsız — değişmedi) ----
   test('parseCriticOutput: geçerli JSON', () => {
     const r = parseCriticOutput(VALID_CRITIC_OUTPUT_STR);
     assert.strictEqual(r.success, true);
@@ -106,7 +129,7 @@ const VALID_CRITIC_OUTPUT_STR = JSON.stringify({
     assert.strictEqual(r.success, false);
   });
 
-  // ---- validateCriticOutput ----
+  // ---- validateCriticOutput (platform-agnostik — B18 kapsamında değişmedi) ----
   test('validateCriticOutput: geçerli tam çıktı', () => {
     const errors = validateCriticOutput(JSON.parse(VALID_CRITIC_OUTPUT_STR));
     assert.strictEqual(errors.length, 0);
@@ -160,33 +183,53 @@ const VALID_CRITIC_OUTPUT_STR = JSON.stringify({
     assert.ok(errors.some((e) => e.includes('notes')));
   });
 
-  // ---- runCriticNode (koordinasyon) ----
+  // ---- runCriticNode (koordinasyon) [B18: platformConfig üçüncü argüman] ----
   test('runCriticNode: geçerli akış', () => {
-    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, { complete: () => VALID_CRITIC_OUTPUT_STR });
+    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, { complete: () => VALID_CRITIC_OUTPUT_STR }, IG_PLATFORM_CONFIG);
     assert.strictEqual(r.success, true);
     assert.strictEqual(r.output.critic_verdict, 'approve');
   });
   test('runCriticNode: model çağrısı çökerse (fail-closed)', () => {
-    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, null);
+    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, null, IG_PLATFORM_CONFIG);
     assert.strictEqual(r.success, false);
     assert.strictEqual(r.stage, 'model_call');
   });
   test('runCriticNode: bozuk JSON (fail-closed)', () => {
-    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, { complete: () => '{not json' });
+    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, { complete: () => '{not json' }, IG_PLATFORM_CONFIG);
     assert.strictEqual(r.success, false);
     assert.strictEqual(r.stage, 'parse');
   });
   test('runCriticNode: şema ihlali (fail-closed)', () => {
-    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, { complete: () => JSON.stringify({ critic_verdict: 'approve' }) });
+    const r = runCriticNode(
+      VALID_EXECUTOR_OUTPUT,
+      { complete: () => JSON.stringify({ critic_verdict: 'approve' }) },
+      IG_PLATFORM_CONFIG
+    );
     assert.strictEqual(r.success, false);
     assert.strictEqual(r.stage, 'validation');
   });
   test('runCriticNode: reject verdict de başarıyla dönüyor (Policy Engine karar versin)', () => {
     const rejectOutput = JSON.parse(VALID_CRITIC_OUTPUT_STR);
     rejectOutput.critic_verdict = 'reject';
-    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, { complete: () => JSON.stringify(rejectOutput) });
+    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, { complete: () => JSON.stringify(rejectOutput) }, IG_PLATFORM_CONFIG);
     assert.strictEqual(r.success, true);
     assert.strictEqual(r.output.critic_verdict, 'reject');
+  });
+
+  // ---- runCriticNode: platformConfig eksik/kısmi [B18, yeni testler] ----
+  test('runCriticNode: platformConfig yoksa fail-closed', () => {
+    const r = runCriticNode(VALID_EXECUTOR_OUTPUT, { complete: () => VALID_CRITIC_OUTPUT_STR }, null);
+    assert.strictEqual(r.success, false);
+    assert.strictEqual(r.stage, 'platform_config');
+  });
+  test('runCriticNode: platformConfig.promptLabel boşsa fail-closed', () => {
+    const r = runCriticNode(
+      VALID_EXECUTOR_OUTPUT,
+      { complete: () => VALID_CRITIC_OUTPUT_STR },
+      { ...IG_PLATFORM_CONFIG, promptLabel: '' }
+    );
+    assert.strictEqual(r.success, false);
+    assert.strictEqual(r.stage, 'platform_config');
   });
 
   console.log(`\n${passed} geçti, ${failed} başarısız (toplam ${passed + failed})`);
