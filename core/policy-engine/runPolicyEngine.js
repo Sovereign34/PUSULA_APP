@@ -4,13 +4,16 @@
 //          birleştirir. execution-gate/gate.js'in checkPolicyEngineApproved
 //          fonksiyonu bu çıktının .approved ve .decision_id alanlarını tüketir.
 // Bağlı:   policy-engine/checks.js (7 fonksiyon), execution-gate/gate.js
-//          (bu dosyanın çıktısını girdi olarak alır).
+//          (bu dosyanın çıktısını girdi olarak alır), çağıran modülün
+//          platformConfig'i (executorNode.js/criticNode.js ile aynı nesne —
+//          B18 sonrası checkPlacementLock'a iletilmesi için gerekli).
 // AMC:     checks.js'teki tüm AMC kodları (AMC-1, AMC-3, AMC-4, AMC-8) —
 //          bu dosya bir kontrol eklemez, sadece koordine eder.
 // Risk:    Kontrol sırası ARCHITECTURE.md §1.4'ün 7 maddelik resmi listesiyle
 //          [DÜZELTİLDİ] birebir eşleştirildi (bkz. Değişiklik notu) — audit
 //          log'daki `policy_engine_result` dizisi artık §1.4'teki numaralarla
-//          birebir okunabilir.
+//          birebir okunabilir. [B18] platformConfig verilmezse checkPlacementLock
+//          fail-closed reddeder (placement === undefined hiçbir zaman geçmez).
 // DÜZELTME NOTU (aynı oturum): İlk taslakta `checkCriticApproved` yanlışlıkla
 //          en başa konmuştu (checks.js'in export sırası izlenmişti). ARCHITECTURE.md
 //          §1.4 yüklenince gerçek sıranın budget→pct→placement→creative→utm→
@@ -19,14 +22,21 @@
 //          doğruydu — sadece `results` dizisinin okunabilirliği etkileniyordu.
 //          Gerçek Policy Engine'in 30/30 test dosyasıyla (hâlâ bu ajana
 //          yüklenmedi) karşılaştırılmadan repo'ya merge edilmemeli — AGENT.md Kural 1.
+// [B18, Session 26] checkPlacementLock artık platformConfig parametresi
+//          alıyor (checks.js'te Instagram literali kaldırıldı) — bu dosya
+//          o parametreyi thread ediyor. buildPolicyChecks ve runPolicyEngine
+//          imzaları değişti: yeni son parametre `platformConfig`. Aynı
+//          uyarı geçerli: mevcut test dosyasıyla karşılaştırılmadan merge
+//          edilmemeli, imza değişikliği testleri kırar.
 
 /**
  * checks.js'in 7 fonksiyonunu enjekte edilen input'tan besler. `checkFns`
  * parametresi test edilebilirlik için ayrılabilir (gerçek require yerine
  * mock geçilebilir) — gate.js/metaApi.js'teki client-enjeksiyon deseniyle
  * tutarlı, ama burada varsayılan olarak gerçek checks.js kullanılır.
+ * [B18] platformConfig sadece checkPlacementLock'a iletilir (7 numaralı madde).
  */
-function buildPolicyChecks(input, config, checkFns) {
+function buildPolicyChecks(input, config, checkFns, platformConfig) {
   const {
     critic_verdict,
     critic_checks,
@@ -41,7 +51,7 @@ function buildPolicyChecks(input, config, checkFns) {
   return [
     checkFns.checkBudgetCap(daily_budget_try, active_total_budget_try, config),      // 1 — AMC-1
     checkFns.checkSingleCampaignPct(daily_budget_try, config),                        // 2 — AMC-1
-    checkFns.checkPlacementLock(placement, config),                                   // 3 — AMC-4
+    checkFns.checkPlacementLock(placement, config, platformConfig),                   // 3 — AMC-4
     checkFns.checkCreativeUploaded(creative_uploaded),                                // 4 — AMC-8
     checkFns.checkUtmComplete(utm),                                                   // 5
     checkFns.checkCriticApproved(critic_verdict),                                     // 6 — AMC-3
@@ -55,9 +65,9 @@ function buildPolicyChecks(input, config, checkFns) {
  * karşılaştırıyor, duplicate kontrol burada tekrarlanmıyor — AGENT.md §27).
  * checkFns parametresi verilmezse gerçek checks.js kullanılır.
  */
-function runPolicyEngine(input, config, checkFns) {
+function runPolicyEngine(input, config, checkFns, platformConfig) {
   const fns = checkFns || require('./checks');
-  const results = buildPolicyChecks(input, config, fns);
+  const results = buildPolicyChecks(input, config, fns, platformConfig);
   const approved = results.every((r) => r.passed);
 
   return {
