@@ -10,12 +10,28 @@
 //          production'a sızabilir.
 // Dokunma: checks.js'in fonksiyon imzası değişirse (parametre sırası/tipi) burası
 //          da güncellenmeli.
+//
+// [B18, Session 26 (devam 3)] checkPlacementLock artık üçüncü argüman olarak
+// platformConfig alıyor (Instagram literali checks.js'ten kaldırıldı).
+// IG_PLATFORM_CONFIG fixture'ı eklendi, mevcut checkPlacementLock çağrılarına
+// üçüncü argüman olarak geçildi (davranış AYNI — sadece kilit değeri artık
+// config yerine platformConfig'ten okunuyor). Ayrıca platformConfig eksik/
+// yanlış senaryoları için 3 yeni test eklendi (daha önce hiç test edilmiyordu).
 const assert = require('assert');
 const checks = require('./checks');
 
 const config = {
   budget: { max_daily_ad_spend_try: 2000, max_single_campaign_pct: 40 },
   placement: { allowed: ['instagram'] },
+};
+
+// [B18] platformConfig fixture — executorNode/criticNode test fixture'larıyla
+// aynı platformName/placementValue çifti.
+const IG_PLATFORM_CONFIG = {
+  platformName: 'instagram',
+  placementValue: 'instagram_only',
+  decisionType: 'ig_campaign_brief',
+  promptLabel: 'Instagram',
 };
 
 // --- checkCriticApproved (AMC-3) ---
@@ -37,10 +53,37 @@ assert.strictEqual(checks.checkSingleCampaignPct(801, config).passed, false, 'a�
 assert.strictEqual(checks.checkSingleCampaignPct(800, config).passed, true, 'sınır: ilk kampanya olsa da aynı formül geçerli');
 assert.strictEqual(checks.checkSingleCampaignPct(null, config).passed, false, 'null: bütçe eksik');
 
-// --- checkPlacementLock (AMC-4) ---
-assert.strictEqual(checks.checkPlacementLock('instagram_only', config).passed, true, 'geçerli: instagram_only');
-assert.strictEqual(checks.checkPlacementLock('facebook', config).passed, false, 'aşım: yanlış platform');
-assert.strictEqual(checks.checkPlacementLock(null, config).passed, false, 'null: placement eksik');
+// --- checkPlacementLock (AMC-4) [B18: platformConfig üçüncü argüman] ---
+assert.strictEqual(
+  checks.checkPlacementLock('instagram_only', config, IG_PLATFORM_CONFIG).passed,
+  true,
+  'geçerli: instagram_only'
+);
+assert.strictEqual(
+  checks.checkPlacementLock('facebook', config, IG_PLATFORM_CONFIG).passed,
+  false,
+  'aşım: yanlış platform'
+);
+assert.strictEqual(
+  checks.checkPlacementLock(null, config, IG_PLATFORM_CONFIG).passed,
+  false,
+  'null: placement eksik'
+);
+assert.strictEqual(
+  checks.checkPlacementLock('instagram_only', config, null).passed,
+  false,
+  'null: platformConfig eksikse fail-closed [B18, yeni]'
+);
+assert.strictEqual(
+  checks.checkPlacementLock('instagram_only', config, { platformName: 'instagram', placementValue: 'facebook_only' }).passed,
+  false,
+  'aşım: platformConfig.placementValue placement ile eşleşmiyor [B18, yeni]'
+);
+assert.strictEqual(
+  checks.checkPlacementLock('instagram_only', { placement: { allowed: ['facebook'] } }, IG_PLATFORM_CONFIG).passed,
+  false,
+  'aşım: config.placement.allowed platformConfig.platformName ile eşleşmiyor (çift kilit) [B18, yeni]'
+);
 
 // --- checkCreativeUploaded (AMC-8) ---
 assert.strictEqual(checks.checkCreativeUploaded(true).passed, true, 'geçerli: yüklendi');
@@ -89,4 +132,4 @@ assert.strictEqual(
 assert.strictEqual(checks.checkCriticChecksIndependent(null).passed, false, 'null: checks objesi eksik');
 assert.strictEqual(checks.checkCriticChecksIndependent({}).passed, false, 'sınır: checks objesi boş (tüm alanlar eksik)');
 
-console.log('✅ Tüm checks.js testleri geçti (30/30)');
+console.log('✅ Tüm checks.js testleri geçti (33/33)');

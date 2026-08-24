@@ -78,6 +78,19 @@ function checkSingleCampaignPct(dailyBudgetTry, config) {
  * türetilmemeli.
  */
 function checkPlacementLock(placement, config, platformConfig) {
+  // [B18 test yazımı, Session 26 (devam 3) — hata bulundu] platformConfig
+  // null/eksik geldiğinde önceki sürüm TypeError fırlatıyordu (çökme,
+  // fail-closed DEĞİL). AMC-4 gibi kritik bir kilit fonksiyonu asla exception
+  // fırlatmamalı — n8n Code node'da yakalanmamış exception tüm workflow'u
+  // durdurabilir, oysa `passed:false` dönmesi runPolicyEngine.js'in normal
+  // .every() akışıyla güvenle reddedilir.
+  if (!platformConfig || typeof platformConfig.placementValue !== 'string' || typeof platformConfig.platformName !== 'string') {
+    return {
+      amc: 'AMC-4',
+      passed: false,
+      reason: 'platformConfig eksik veya geçersiz (placementValue/platformName)',
+    };
+  }
   const allowed = config.placement.allowed;
   const passed =
     placement === platformConfig.placementValue &&
