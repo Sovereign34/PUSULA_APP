@@ -1,8 +1,18 @@
+// core/executor/executorNode.test.js
+// [B18, Session 26 (devam 3)] platformConfig imzasına güncellendi — eski
+// çağrılar platformConfig parametresi vermiyordu, bu yüzden validateExecutorOutput
+// ve runExecutorNode her koşulda "eksik alan" hatası veriyordu. IG_PLATFORM_CONFIG
+// fixture'ı eklendi, tüm çağrılara üçüncü/ikinci argüman olarak geçildi.
+// assertPlatformConfig için ayrı bir test bloğu eklendi (daha önce hiç test
+// edilmiyordu). Aşağıdaki mevcut testlerin davranışı DEĞİŞMEDİ — sadece
+// platformConfig enjekte edildi.
+
 const {
   buildExecutorPrompt,
   callExecutorModel,
   parseExecutorOutput,
   validateExecutorOutput,
+  assertPlatformConfig,
   runExecutorNode,
 } = require("./executorNode");
 
@@ -17,6 +27,15 @@ function assert(condition, message) {
     console.error(`FAIL: ${message}`);
   }
 }
+
+// [B18] platformConfig fixture — IG-ADS-MODULE'ün kendi platformConfig'i
+// (executorNode.js'in başındaki örnekle birebir).
+const IG_PLATFORM_CONFIG = {
+  platformName: "instagram",
+  placementValue: "instagram_only",
+  decisionType: "ig_campaign_brief",
+  promptLabel: "Instagram",
+};
 
 const validRequest = {
   campaign_brief_request: {
@@ -48,12 +67,30 @@ function validOutputObj(overrides = {}) {
   };
 }
 
+// --- assertPlatformConfig [B18, yeni] ---
+assert(assertPlatformConfig(IG_PLATFORM_CONFIG).length === 0, "assertPlatformConfig: tam platformConfig hatasız");
+assert(assertPlatformConfig(null).length === 4, "assertPlatformConfig: null tüm 4 alanı eksik saymalı");
+assert(assertPlatformConfig(undefined).length === 4, "assertPlatformConfig: undefined tüm 4 alanı eksik saymalı");
+assert(
+  assertPlatformConfig({ ...IG_PLATFORM_CONFIG, promptLabel: "" }).includes("promptLabel"),
+  "assertPlatformConfig: boş string eksik sayılmalı"
+);
+assert(
+  assertPlatformConfig({ platformName: "instagram" }).length === 3,
+  "assertPlatformConfig: kısmi obje kalan alanları listelemeli"
+);
+assert(
+  assertPlatformConfig({ ...IG_PLATFORM_CONFIG, decisionType: 42 }).includes("decisionType"),
+  "assertPlatformConfig: string olmayan alan eksik sayılmalı"
+);
+
 // --- buildExecutorPrompt ---
-const prompt = buildExecutorPrompt(validRequest);
+const prompt = buildExecutorPrompt(validRequest, IG_PLATFORM_CONFIG);
 assert(typeof prompt === "string" && prompt.includes("manual"), "buildExecutorPrompt: trigger_source prompt'a giriyor");
 assert(prompt.includes("hafta sonu trafiği"), "buildExecutorPrompt: objective_hint prompt'a giriyor");
+assert(prompt.includes("Instagram"), "buildExecutorPrompt: platformConfig.promptLabel prompt'a giriyor [B18]");
 
-// --- callExecutorModel ---
+// --- callExecutorModel (platformConfig'ten bağımsız — değişmedi) ---
 assert(
   callExecutorModel(prompt, { complete: () => "{}" }).success === true,
   "callExecutorModel: geçerli client kabul edilmeli"
@@ -76,89 +113,109 @@ assert(
   "callExecutorModel: client hata atarsa fail-closed"
 );
 
-// --- parseExecutorOutput ---
+// --- parseExecutorOutput (platformConfig'ten bağımsız — değişmedi) ---
 assert(parseExecutorOutput('{"a":1}').success === true, "parseExecutorOutput: geçerli JSON kabul edilmeli");
 assert(parseExecutorOutput("bozuk json{{{").success === false, "parseExecutorOutput: bozuk JSON fail-closed");
 assert(parseExecutorOutput("").success === false, "parseExecutorOutput: boş string fail-closed");
 
-// --- validateExecutorOutput ---
-assert(validateExecutorOutput(validOutputObj()).length === 0, "validateExecutorOutput: geçerli çıktı hatasız");
-assert(validateExecutorOutput(null).length > 0, "validateExecutorOutput: null reddedilmeli");
+// --- validateExecutorOutput [B18: platformConfig ikinci argüman] ---
 assert(
-  validateExecutorOutput(validOutputObj({ decision_id: "not-a-uuid" })).length > 0,
+  validateExecutorOutput(validOutputObj(), IG_PLATFORM_CONFIG).length === 0,
+  "validateExecutorOutput: geçerli çıktı hatasız"
+);
+assert(validateExecutorOutput(null, IG_PLATFORM_CONFIG).length > 0, "validateExecutorOutput: null reddedilmeli");
+assert(
+  validateExecutorOutput(validOutputObj({ decision_id: "not-a-uuid" }), IG_PLATFORM_CONFIG).length > 0,
   "validateExecutorOutput: geçersiz UUID reddedilmeli"
 );
 assert(
-  validateExecutorOutput(validOutputObj({ decision_type: "wrong_type" })).length > 0,
-  "validateExecutorOutput: yanlış decision_type reddedilmeli"
+  validateExecutorOutput(validOutputObj({ decision_type: "wrong_type" }), IG_PLATFORM_CONFIG).length > 0,
+  "validateExecutorOutput: yanlış decision_type reddedilmeli (platformConfig.decisionType ile karşılaştırılır)"
 );
 assert(
-  validateExecutorOutput({ ...validOutputObj(), campaign_brief: { ...validOutputObj().campaign_brief, objective: "AWARENESS" } })
-    .length > 0,
+  validateExecutorOutput(
+    { ...validOutputObj(), campaign_brief: { ...validOutputObj().campaign_brief, objective: "AWARENESS" } },
+    IG_PLATFORM_CONFIG
+  ).length > 0,
   "validateExecutorOutput: şema dışı objective reddedilmeli"
 );
 assert(
-  validateExecutorOutput({ ...validOutputObj(), campaign_brief: { ...validOutputObj().campaign_brief, daily_budget_try: 0 } })
-    .length > 0,
+  validateExecutorOutput(
+    { ...validOutputObj(), campaign_brief: { ...validOutputObj().campaign_brief, daily_budget_try: 0 } },
+    IG_PLATFORM_CONFIG
+  ).length > 0,
   "validateExecutorOutput: daily_budget_try=0 reddedilmeli (sınır)"
 );
 assert(
-  validateExecutorOutput({ ...validOutputObj(), campaign_brief: { ...validOutputObj().campaign_brief, daily_budget_try: -50 } })
-    .length > 0,
+  validateExecutorOutput(
+    { ...validOutputObj(), campaign_brief: { ...validOutputObj().campaign_brief, daily_budget_try: -50 } },
+    IG_PLATFORM_CONFIG
+  ).length > 0,
   "validateExecutorOutput: negatif daily_budget_try reddedilmeli"
 );
 assert(
-  validateExecutorOutput({ ...validOutputObj(), campaign_brief: { ...validOutputObj().campaign_brief, placement: "facebook" } })
-    .length > 0,
-  "validateExecutorOutput: instagram_only dışı placement reddedilmeli"
+  validateExecutorOutput(
+    { ...validOutputObj(), campaign_brief: { ...validOutputObj().campaign_brief, placement: "facebook" } },
+    IG_PLATFORM_CONFIG
+  ).length > 0,
+  "validateExecutorOutput: platformConfig.placementValue dışı placement reddedilmeli"
 );
 assert(
-  validateExecutorOutput({
-    ...validOutputObj(),
-    campaign_brief: {
-      ...validOutputObj().campaign_brief,
-      targeting: { age_min: 45, age_max: 18, locations: ["İstanbul"], interests: [] },
+  validateExecutorOutput(
+    {
+      ...validOutputObj(),
+      campaign_brief: {
+        ...validOutputObj().campaign_brief,
+        targeting: { age_min: 45, age_max: 18, locations: ["İstanbul"], interests: [] },
+      },
     },
-  }).length > 0,
+    IG_PLATFORM_CONFIG
+  ).length > 0,
   "validateExecutorOutput: age_min > age_max reddedilmeli"
 );
 assert(
-  validateExecutorOutput({
-    ...validOutputObj(),
-    campaign_brief: { ...validOutputObj().campaign_brief, targeting: { age_min: 18, age_max: 45, locations: [], interests: [] } },
-  }).length > 0,
+  validateExecutorOutput(
+    {
+      ...validOutputObj(),
+      campaign_brief: { ...validOutputObj().campaign_brief, targeting: { age_min: 18, age_max: 45, locations: [], interests: [] } },
+    },
+    IG_PLATFORM_CONFIG
+  ).length > 0,
   "validateExecutorOutput: boş locations reddedilmeli"
 );
 assert(
-  validateExecutorOutput({
-    ...validOutputObj(),
-    campaign_brief: {
-      ...validOutputObj().campaign_brief,
-      utm: { source: "facebook", medium: "paid", campaign: "x", content: "y" },
+  validateExecutorOutput(
+    {
+      ...validOutputObj(),
+      campaign_brief: {
+        ...validOutputObj().campaign_brief,
+        utm: { source: "facebook", medium: "paid", campaign: "x", content: "y" },
+      },
     },
-  }).length > 0,
-  "validateExecutorOutput: utm.source instagram değilse reddedilmeli"
+    IG_PLATFORM_CONFIG
+  ).length > 0,
+  "validateExecutorOutput: utm.source platformConfig.platformName değilse reddedilmeli"
 );
 assert(
-  validateExecutorOutput({ ...validOutputObj(), confidence: 1.5 }).length > 0,
+  validateExecutorOutput({ ...validOutputObj(), confidence: 1.5 }, IG_PLATFORM_CONFIG).length > 0,
   "validateExecutorOutput: confidence > 1.0 reddedilmeli"
 );
 assert(
-  validateExecutorOutput({ ...validOutputObj(), confidence: -0.1 }).length > 0,
+  validateExecutorOutput({ ...validOutputObj(), confidence: -0.1 }, IG_PLATFORM_CONFIG).length > 0,
   "validateExecutorOutput: confidence < 0.0 reddedilmeli"
 );
 assert(
-  validateExecutorOutput({ ...validOutputObj(), confidence: 0.0 }).length === 0,
+  validateExecutorOutput({ ...validOutputObj(), confidence: 0.0 }, IG_PLATFORM_CONFIG).length === 0,
   "validateExecutorOutput: confidence == 0.0 kabul edilmeli (sınır)"
 );
 assert(
-  validateExecutorOutput({ ...validOutputObj(), confidence: 1.0 }).length === 0,
+  validateExecutorOutput({ ...validOutputObj(), confidence: 1.0 }, IG_PLATFORM_CONFIG).length === 0,
   "validateExecutorOutput: confidence == 1.0 kabul edilmeli (sınır)"
 );
 
-// --- runExecutorNode (koordinasyon) ---
+// --- runExecutorNode (koordinasyon) [B18: platformConfig üçüncü argüman] ---
 const goodClient = { complete: () => JSON.stringify(validOutputObj()) };
-const goodResult = runExecutorNode(validRequest, goodClient);
+const goodResult = runExecutorNode(validRequest, goodClient, IG_PLATFORM_CONFIG);
 assert(goodResult.success === true, "runExecutorNode: geçerli akış başarılı olmalı");
 assert(
   goodResult.output.requires_critic === true,
@@ -166,19 +223,38 @@ assert(
 );
 
 const brokenClient = { complete: () => { throw new Error("down"); } };
-const brokenResult = runExecutorNode(validRequest, brokenClient);
+const brokenResult = runExecutorNode(validRequest, brokenClient, IG_PLATFORM_CONFIG);
 assert(brokenResult.success === false, "runExecutorNode: model çağrısı çökerse fail-closed");
 assert(brokenResult.stage === "model_call", "runExecutorNode: hata aşaması model_call olarak işaretlenmeli");
 
 const badJsonClient = { complete: () => "not json" };
-const badJsonResult = runExecutorNode(validRequest, badJsonClient);
+const badJsonResult = runExecutorNode(validRequest, badJsonClient, IG_PLATFORM_CONFIG);
 assert(badJsonResult.success === false, "runExecutorNode: bozuk JSON fail-closed");
 assert(badJsonResult.stage === "parse", "runExecutorNode: hata aşaması parse olarak işaretlenmeli");
 
 const invalidSchemaClient = { complete: () => JSON.stringify(validOutputObj({ decision_id: "bad" })) };
-const invalidSchemaResult = runExecutorNode(validRequest, invalidSchemaClient);
+const invalidSchemaResult = runExecutorNode(validRequest, invalidSchemaClient, IG_PLATFORM_CONFIG);
 assert(invalidSchemaResult.success === false, "runExecutorNode: şema ihlali fail-closed");
 assert(invalidSchemaResult.stage === "validation", "runExecutorNode: hata aşaması validation olarak işaretlenmeli");
+
+// --- runExecutorNode: platformConfig eksik/kısmi [B18, yeni testler] ---
+const noConfigResult = runExecutorNode(validRequest, goodClient, null);
+assert(noConfigResult.success === false, "runExecutorNode: platformConfig yoksa fail-closed");
+assert(
+  noConfigResult.stage === "platform_config",
+  "runExecutorNode: platformConfig eksikse hata aşaması platform_config olmalı"
+);
+
+const partialConfigResult = runExecutorNode(validRequest, goodClient, { platformName: "instagram" });
+assert(partialConfigResult.success === false, "runExecutorNode: kısmi platformConfig fail-closed");
+assert(
+  partialConfigResult.stage === "platform_config",
+  "runExecutorNode: kısmi platformConfig'te de hata aşaması platform_config olmalı"
+);
+assert(
+  partialConfigResult.errors[0].includes("placementValue"),
+  "runExecutorNode: kısmi platformConfig hatasında eksik alan adı geçmeli"
+);
 
 console.log(`\n${pass}/${pass + fail} geçti`);
 if (fail > 0) process.exit(1);
