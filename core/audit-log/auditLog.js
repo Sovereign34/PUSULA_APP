@@ -3,7 +3,14 @@
 //          alanlarını (actor, input_context_hash, audit.record_hash —
 //          ARCHITECTURE.md §1.5 v1.4) + zincirleme previous_hash'i
 //          (R-IG-22, DUAL-AI spec §9/§24) tek bir satıra derleyip
-//          append-only Postgres tablosuna (`IG_ADS_DB_URL`) yazar.
+//          `dbClient` üzerinden append-only Postgres tablosuna yazar.
+//          [B18, Session 26] Bu dosyanın kodu zaten platform-agnostikti
+//          (dbClient enjekte ediliyor, hiçbir platform literali yok) — tek
+//          bulgu, bu yorum bloğundaki eski `IG_ADS_DB_URL` env adı referansıydı,
+//          genel ifadeyle değiştirildi. KOD DEĞİŞMEDİ. Gerçek n8n/Hetzner
+//          ortamındaki Postgres credential/env adının hâlâ `IG_ADS_DB_URL`
+//          olması ayrı bir infra-seviyesi takip maddesi (bu dosyanın kapsamı
+//          dışında — n8n Credentials Store/VPS env değişkeni, PSC-2).
 // Bağlı:   meta-api/metaApi.js (runMetaApiNode çıktısı → meta_api_response);
 //          execution-gate/gate.js (decision_id, actor Execution Token'dan);
 //          policy-engine/runPolicyEngine.js (policy_engine_result);
