@@ -1,8 +1,8 @@
 // core/policy-engine/checks.js
-// Amaç:    Executor→Critic onayından geçen kampanya brief'ini Meta Marketing API'ye
+// Amaç:    Executor→Critic onayından geçen kampanya brief'ini Meta/Ads API'ye
 //          göndermeden önce deterministik, sabit kurallarla tek tek denetler.
-// Bağlı:   runPolicyEngine.js (bu dosyadaki 7 fonksiyonu sabit sırayla çağırır),
-//          checks.test.js (her fonksiyon için geçerli/sınır/aşım/null testi) —
+// Bağlı:   runPolicyEngine.js (bu dosyadaki 7 fonksiyonu sabit sırayla çağırır,
+//          platformConfig'i checkPlacementLock'a iletir), checks.test.js —
 //          checks.js'e yeni fonksiyon eklenirse ikisi de güncellenmeli.
 // AMC:     AMC-1 (bütçe), AMC-3 (çift onay), AMC-4 (placement/UTM/Critic bulgu sessiz sapma), AMC-8 (kreatif onay)
 // Risk:    Hatalı çalışırsa gerçek bütçe/placement sınırları aşılabilir, kreatifsiz
@@ -12,6 +12,15 @@
 // Dokunma: Değiştirmeden önce ARCHITECTURE.md §1.4 (7 kontrol listesi) ve
 //          CONFIG_SCHEMA.md §2 (ig_ads_policy_config.yaml) kontrol edilmeli.
 //          Kaynak: MASTER_PLAN.md §2.4 (Policy Engine ilkesi), ARCHITECTURE.md §1.4.
+//
+// [B18, Session 26 bulgusu] checkPlacementLock'taki 'instagram_only'/'instagram'
+// literalleri Core koddan çıkarıldı. AMC-4'ün "placement kod seviyesinde sabit"
+// ilkesi BOZULMADI — kilit değeri artık config.placement.allowed (mevcut YAML
+// config, değişmedi) DEĞİL, çağıran modülün kendi kodunda hardcode ettiği
+// platformConfig parametresinden geliyor. Yani kilit hâlâ "runtime input ile
+// değiştirilemez" — sadece hangi platforma kilitli olduğu artık Core dışında,
+// modül seviyesinde tanımlı. CONFIG_SCHEMA.md'ye dokunulmadı (Postgres/YAML
+// şeması aynı kaldı, sadece fonksiyon parametresi eklendi).
 
 /**
  * AMC-3 — Critic onayı olmadan hiçbir brief Policy Engine'den geçemez.
@@ -61,15 +70,24 @@ function checkSingleCampaignPct(dailyBudgetTry, config) {
 }
 
 /**
- * AMC-4 — Placement kod seviyesinde sabit: sadece instagram_only, sessiz sapma yasak.
+ * AMC-4 — Placement kod seviyesinde sabit: platformConfig.placementValue
+ * dışında hiçbir değer geçmez, sessiz sapma yasak. [B18] Kilit değeri artık
+ * çağıran modülün platformConfig'inden geliyor (Core'da literal yok), ama
+ * hâlâ runtime input (webhook/API payload) ile değiştirilemez — platformConfig
+ * modülün kendi kod/deploy-zamanı sabiti olmalı, kullanıcı girdisinden asla
+ * türetilmemeli.
  */
-function checkPlacementLock(placement, config) {
+function checkPlacementLock(placement, config, platformConfig) {
   const allowed = config.placement.allowed;
-  const passed = placement === 'instagram_only' && allowed.length === 1 && allowed[0] === 'instagram';
+  const passed =
+    placement === platformConfig.placementValue &&
+    Array.isArray(allowed) &&
+    allowed.length === 1 &&
+    allowed[0] === platformConfig.platformName;
   return {
     amc: 'AMC-4',
     passed,
-    reason: passed ? null : `placement='${placement}', beklenen='instagram_only'`,
+    reason: passed ? null : `placement='${placement}', beklenen='${platformConfig.placementValue}'`,
   };
 }
 
@@ -102,7 +120,8 @@ function checkUtmComplete(utm) {
  * objesinin 5 alanı `critic_verdict`'ten BAĞIMSIZ doğrulanır — 'approve' verdict'i
  * gelse bile, altındaki bulgulardan biri beklenen değeri sağlamıyorsa reddedilir.
  * Kaynak: DUAL-AI spec §12 ("Policy must recheck critical facts, don't trust
- * critic.safe==true"). Beklenen değerler (ARCHITECTURE.md §1.3 şemasıyla birebir):
+ * critic.safe==true"). Beklenen değerler (ARCHITECTURE.md §1.3 şemasıyla birebir,
+ * platform-agnostik alan adları — B18 kapsamında değişiklik yok):
  *   targeting_kvkk_risk=false, forbidden_phrase_in_caption=false,
  *   objective_placement_mismatch=false, budget_target_coherence=true,
  *   utm_format_valid=true.
