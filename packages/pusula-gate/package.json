@@ -1,0 +1,8 @@
+{
+  "//": "Konum: packages/pusula-gate/package.json",
+  "name": "pusula-gate",
+  "version": "0.1.0-taslak",
+  "type": "module",
+  "scripts": { "test": "node --test test/gate.test.mjs", "gen": "node tools/extract-rules.mjs <html>" },
+  "engines": { "node": ">=20" }
+}
