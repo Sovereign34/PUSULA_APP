@@ -3,7 +3,7 @@
 // Amaç:    yorum için güvenli, denetlenebilir, fail-closed karar hattı (handle/process hiç istisna fırlatmaz)
 // Bağlı:   precheck, validate, policy, reviewer, audit, intent-binding, effects (n8n/DB tarafı enjekte eder)
 // Risk:    kapı atlanırsa kalibre edilmemiş AI çıktısı yayına gider; Executor=Critic ailesi olursa çapraz denetim kaybolur
-// Dokunma: aşama sırası ve "hata = ret" kuralı değişmez; yeni aşama = test + KARAR BİLDİRİMİ
+// Dokunma: sayısal ayarlar yalnızca config'ten gelir; aşama sırası ve "hata = ret" kuralı değişmez; yeni aşama = test + KARAR BİLDİRİMİ
 import { parseProposal, buildDecision } from './validate.mjs'
 import { createPolicy } from './policy.mjs'
 import { buildPrompt } from './prompts.mjs'
@@ -13,24 +13,25 @@ import { bindActionToIntent } from './intent-binding.mjs'
 import { precheck, crisisReason } from './precheck.mjs'
 import { createReviewer } from './reviewer.mjs'
 import { createAudit } from './audit.mjs'
+import { validateConfig } from './config.mjs'
 
-const MAX_REV = 2
 const blocked = o => o === 'DENY' || o === 'BLOCK'
 const validModel = m => m && typeof m.family === 'string' && m.family.trim() && typeof m.call === 'function'
 
 export function createGate({ executor, critic, approver = async () => false, effects, getState = () => ({}),
-                             extraRules = [], now = Date.now, modelTimeoutMs = 5000, effectTimeoutMs = 5000 }) {
+                             extraRules = [], now = Date.now, config }) {
   // CORE.md §4: Executor ve Critic aynı model ailesinden OLAMAZ.
   if (!validModel(executor) || !validModel(critic) || executor.family.toLowerCase() === critic.family.toLowerCase())
     throw new Error('MODEL_FAMILY_RULE')
-  const audit = createAudit(now), policy = createPolicy(extraRules), reviewer = createReviewer(critic.call)
+  const cfg = validateConfig(config)   // AMC-9: varsayılan yok, eksik/geçersiz ayar = kurulum hatası
+  const audit = createAudit(now), policy = createPolicy(cfg.rate, extraRules), reviewer = createReviewer(critic.call, { timeoutMs: cfg.timeoutsMs.critic })
   const recent = {}, done = new Set(), busy = new Set()
   const st = () => ({ safeMode: false, ...getState(), now: now(), recent })
   const deny = (id, code, d) => { audit.append({ id, action: d?.action ?? null, outcome: 'DENIED', code }); return { status: 'DENIED', code } }
 
   async function propose(event, rev) {
     let raw
-    try { raw = await withTimeout(executor.call(buildPrompt(event, rev)), modelTimeoutMs) } catch { return { code: 'EXECUTOR_ERROR' } }
+    try { raw = await withTimeout(executor.call(buildPrompt(event, rev)), cfg.timeoutsMs.model) } catch { return { code: 'EXECUTOR_ERROR' } }
     const p = parseProposal(raw)
     return p.ok ? { proposal: p.proposal } : { code: p.code }
   }
@@ -54,7 +55,7 @@ export function createGate({ executor, critic, approver = async () => false, eff
     const eff = Object.hasOwn(effects, d.action) ? effects[d.action] : null
     if (!eff) return deny(id, 'NO_EFFECT', d)
     const slot = now(); (recent[d.action] ??= []).push(slot)   // hız sınırı yuvası eylemden ÖNCE, senkron ayrılır
-    try { await withTimeout(eff(d.params, d), effectTimeoutMs) } catch (e) {
+    try { await withTimeout(eff(d.params, d), cfg.timeoutsMs.effect) } catch (e) {
       if (e?.message === 'TIMEOUT') return deny(id, 'EFFECT_TIMEOUT', d)   // yarım kalmış olabilir: yuva geri verilmez
       const i = recent[d.action].indexOf(slot); if (i >= 0) recent[d.action].splice(i, 1)
       return deny(id, 'EFFECT_ERROR', d)
@@ -76,10 +77,10 @@ export function createGate({ executor, critic, approver = async () => false, eff
   }
   async function run(event, intent, id) {
     let rev = null
-    for (let n = 0; n <= MAX_REV; n++) {
+    for (let n = 0; n <= cfg.maxRevisions; n++) {
       const r = await attempt(event, intent, rev, id)
       if (r.end) return { ...r.end, attempts: n + 1 }
-      if (n === MAX_REV) return deny(id, 'REVIEWER_VETO', r.d)   // 3 öneriden sonra fail-closed
+      if (n === cfg.maxRevisions) return deny(id, 'REVIEWER_VETO', r.d)   // 3 öneriden sonra fail-closed
       rev = { attempt: n + 1, ...r.revise }   // veto onay vermez; her öneri baştan denetlenir
       audit.append({ id, action: r.d.action, outcome: 'REVISED', code: 'REVIEWER_VETO', attempt: n + 1 })
     }
@@ -87,7 +88,7 @@ export function createGate({ executor, critic, approver = async () => false, eff
   }
   async function escalate(id, crisis) {
     const reason = crisisReason(crisis)
-    try { await withTimeout(effects.ESCALATE_TO_HUMAN({ reason }, { id }), effectTimeoutMs) } catch { return deny(id, 'ESCALATION_FAILED') }
+    try { await withTimeout(effects.ESCALATE_TO_HUMAN({ reason }, { id }), cfg.timeoutsMs.effect) } catch { return deny(id, 'ESCALATION_FAILED') }
     audit.append({ id, action: 'ESCALATE_TO_HUMAN', outcome: 'ESCALATED', code: 'PRECHECK_' + reason })
     done.add(id); return { status: 'ESCALATED', reason }
   }
