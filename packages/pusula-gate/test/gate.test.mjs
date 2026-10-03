@@ -11,6 +11,9 @@ const DRAFT_ONLY = { capabilities: { DRAFT_REPLY: { params: { tone: { enum: ['n'
 const PUB_ONLY = { capabilities: { PUBLISH_REPLY: { params: { tone: { enum: ['n'] }, text: { maxLength: 600 } } } } }
 const review = (o = {}) => ({ id: 'r1', text: 'Çok lezzetliydi, teşekkürler', rating: 5, platform: 'Google', ...o })
 
+const CFG = { maxRevisions: 2, rate: { windowMs: 60_000, defaultLimit: 30, perAction: { PUBLISH_REPLY: 6 } }, timeoutsMs: { model: 5000, critic: 3000, effect: 5000 } }
+const withT = (k, ms) => ({ ...CFG, timeoutsMs: { ...CFG.timeoutsMs, [k]: ms } })
+
 function make(over = {}) {
   const calls = { prompts: [], effects: [] }
   const seq = (arr) => { let i = 0; return async p => { calls.prompts.push(p); const v = arr[Math.min(i++, arr.length - 1)]; if (v instanceof Error) throw v; return v } }
@@ -20,7 +23,7 @@ function make(over = {}) {
     approver: over.approver ?? (async () => true),
     effects: over.effects ?? { DRAFT_REPLY: async p => calls.effects.push(['DRAFT', p]), PUBLISH_REPLY: async p => calls.effects.push(['PUB', p]), ESCALATE_TO_HUMAN: async p => calls.effects.push(['ESC', p]) },
     getState: over.getState, now: over.now,
-    ...(over.opts ?? {}),
+    config: over.config ?? CFG,
   })
   return { g, calls }
 }
@@ -126,7 +129,7 @@ test('executor: hata / çöp / fazla alan / bilinmeyen eylem = ret', async () =>
   for (const [raw, code] of cases) assert.equal((await make({ exec: [raw] }).g.process(review({ id: code }), DRAFT_ONLY)).code, code)
 })
 test('executor: zaman aşımı = ret', async () => {
-  const g = createGate({ executor: { family: 'A', call: () => new Promise(() => {}) }, critic: { family: 'B', call: async () => OK }, effects: {}, modelTimeoutMs: 20 })
+  const g = createGate({ executor: { family: 'A', call: () => new Promise(() => {}) }, critic: { family: 'B', call: async () => OK }, effects: {}, config: withT('model', 20) })
   assert.equal((await g.process(review(), DRAFT_ONLY)).code, 'EXECUTOR_ERROR')
 })
 
@@ -135,7 +138,7 @@ test('etki: hata → yuva geri verilir; zaman aşımı → verilmez', async () =
   const bad = make({ effects: { DRAFT_REPLY: async () => { throw new Error('db') } } })
   assert.equal((await bad.g.process(review(), DRAFT_ONLY)).code, 'EFFECT_ERROR')
   assert.equal((bad.g.internals.state().recent.DRAFT_REPLY ?? []).length, 0)
-  const slow = make({ effects: { DRAFT_REPLY: () => new Promise(() => {}) }, opts: { effectTimeoutMs: 20 } })
+  const slow = make({ effects: { DRAFT_REPLY: () => new Promise(() => {}) }, config: withT('effect', 20) })
   assert.equal((await slow.g.process(review(), DRAFT_ONLY)).code, 'EFFECT_TIMEOUT')
   assert.equal(slow.g.internals.state().recent.DRAFT_REPLY.length, 1)
 })
@@ -168,4 +171,35 @@ test('denetim: zincir doğrulanır, kayıtlar donuk, kayıtta metin yok', async 
   assert.ok(!JSON.stringify(g.audit.entries()).includes('0532'))
   const e = g.audit.entries(); assert.equal(g.audit.verify(), true)
   assert.throws(() => { e[0].outcome = 'X' }, TypeError)   // donmuş kayıt
+})
+
+// ---------- CONFIG (AMC-9) ----------
+test('config: eksik veya geçersiz ayar = CONFIG_INVALID (varsayılana düşmez)', () => {
+  const m = f => ({ family: f, call: async () => '' })
+  const mk = config => () => createGate({ executor: m('a'), critic: m('b'), effects: {}, config })
+  assert.throws(mk(undefined), /CONFIG_INVALID/)
+  assert.throws(mk({}), /CONFIG_INVALID/)
+  assert.throws(mk({ ...CFG, maxRevisions: -1 }), /CONFIG_INVALID/)
+  assert.throws(mk({ ...CFG, maxRevisions: 9 }), /CONFIG_INVALID/)
+  assert.throws(mk({ ...CFG, maxRevisions: '2' }), /CONFIG_INVALID/)
+  assert.throws(mk({ ...CFG, rate: { ...CFG.rate, windowMs: 0 } }), /CONFIG_INVALID/)
+  assert.throws(mk({ ...CFG, rate: { ...CFG.rate, perAction: { NOPE: 3 } } }), /CONFIG_INVALID/)
+  assert.throws(mk({ ...CFG, timeoutsMs: { model: 1, effect: 1 } }), /CONFIG_INVALID/)
+  assert.doesNotThrow(mk(CFG))
+})
+test('config: maxRevisions=0 → ilk veto kesindir, Executor bir kez çağrılır', async () => {
+  const { g, calls } = make({ config: { ...CFG, maxRevisions: 0 }, critic: ['{"veto":true,"reason":"no"}'] })
+  assert.equal((await g.process(review({ id: 'z1' }), DRAFT_ONLY)).code, 'REVIEWER_VETO'); assert.equal(calls.prompts.length, 1)
+})
+test('config: özel hız sınırı uygulanır (PUBLISH_REPLY=2 → 3. ret)', async () => {
+  const cfg = { ...CFG, rate: { ...CFG.rate, perAction: { PUBLISH_REPLY: 2 } } }
+  const { g } = make({ exec: [publish()], config: cfg })
+  for (let i = 0; i < 2; i++) assert.equal((await g.process(review({ id: 'q' + i }), PUB_ONLY)).status, 'EXECUTED')
+  assert.equal((await g.process(review({ id: 'q2' }), PUB_ONLY)).code, 'POLICY_p4_rate')
+})
+test('config: çağıranın sonradan değiştirdiği nesne kapıyı etkilemez (kopya + donuk)', async () => {
+  const c = structuredClone(CFG)
+  const { g } = make({ exec: [publish()], config: c })
+  c.rate.perAction.PUBLISH_REPLY = 1; c.maxRevisions = 0
+  for (let i = 0; i < 2; i++) assert.equal((await g.process(review({ id: 'k' + i }), PUB_ONLY)).status, 'EXECUTED')
 })
