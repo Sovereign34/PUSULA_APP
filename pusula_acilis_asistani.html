@@ -1,11 +1,303 @@
-// Amaç: pusula_acilis_asistani.html içindeki KR/CAT/INT kural verisini src/rules-data.mjs'e aktarır (tek kaynak).
-import { readFileSync, writeFileSync } from 'node:fs'
-const html = readFileSync(process.argv[2], 'utf8')
-const cut = (a, b) => html.slice(html.indexOf(a), html.indexOf(b))
-const src = cut('const KR=[', 'const PN=') + cut('const INT=[', 'const HIGH=')
-const data = new Function(src + '; return { KR, CAT, INT }')()
-data.INT = data.INT.map(i => i.slice(0, 3))   // cümle şablonları UI'a ait, kapıya gerekmez
-writeFileSync(new URL('../src/rules-data.mjs', import.meta.url),
-  '// Konum: packages/pusula-gate/src/rules-data.mjs\n// OTOMATİK ÜRETİLDİ (tools/extract-rules.mjs) — kaynak: pusula_acilis_asistani.html. TASLAK, kalibrasyon bekliyor.\n' +
-  Object.entries(data).map(([k, v]) => `export const ${k} = ${JSON.stringify(v)}\n`).join(''))
-console.log('KR', data.KR.length, 'CAT', data.CAT.length, 'INT', data.INT.length)
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Açılış Asistanı</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#faf5ec;--card:#fffdf8;--ink:#2a2118;--mute:#7a6b5a;--line:#e6dac6;--acc:#b8431f;--accink:#fff;--warn:#fde8e1;--warnink:#8a2a10;--ok:#e8f1e3}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1712;--card:#262019;--ink:#f1e8da;--mute:#a8998a;--line:#3a3128;--acc:#e0673f;--accink:#1c1712;--warn:#3d1f17;--warnink:#ffb59f;--ok:#243021}}
+:root[data-theme="dark"]{--bg:#1c1712;--card:#262019;--ink:#f1e8da;--mute:#a8998a;--line:#3a3128;--acc:#e0673f;--accink:#1c1712;--warn:#3d1f17;--warnink:#ffb59f;--ok:#243021}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Georgia,"Iowan Old Style",serif}
+main{max-width:640px;margin:0 auto;padding:16px 14px 40px}
+h1{font-size:22px;margin:4px 0 2px}
+.sub{color:var(--mute);font:13px system-ui,sans-serif;margin:0 0 14px}
+nav{display:flex;gap:6px;margin-bottom:14px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);padding:6px 0;z-index:2}
+nav button{flex:1;padding:10px 4px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:600 13px system-ui,sans-serif;border-radius:10px}
+nav button[aria-selected="true"]{background:var(--acc);color:var(--accink);border-color:var(--acc)}
+section{display:none}section.on{display:block}
+label{display:block;font:600 12px system-ui,sans-serif;color:var(--mute);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:16px system-ui,sans-serif}
+textarea{min-height:92px;resize:vertical}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.btn{margin-top:12px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--acc);color:var(--accink);font:700 15px system-ui,sans-serif}
+.btn.sec{background:transparent;color:var(--acc);border:1px solid var(--acc);margin-top:8px}
+.box{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.warn{background:var(--warn);color:var(--warnink);border-color:transparent;font:600 14px system-ui,sans-serif}
+.tag{display:inline-block;font:600 12px system-ui,sans-serif;background:var(--ok);padding:3px 8px;border-radius:99px;margin-bottom:6px}
+details{margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:8px 12px}
+summary{font:600 14px system-ui,sans-serif;cursor:pointer}
+.note{font:12px system-ui,sans-serif;color:var(--mute);margin-top:18px}
+pre{white-space:pre-wrap;word-break:break-word;margin:6px 0;font:15px/1.5 Georgia,serif}
+@media (min-width:900px){
+main{max-width:1100px}
+nav{max-width:640px}
+#cevap.on,#insta.on,#tiktok.on{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:28px;align-items:start}
+#cevap>*,#insta>*,#tiktok>*{grid-column:1}
+#cevapOut,#iOut,#tOut{grid-column:2;grid-row:1/span 40;position:sticky;top:64px}
+#cevapOut .box:first-child,#iOut .box:first-child,#tOut .box:first-child{margin-top:0}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Açılış Asistanı</h1>
+<p class="sub">Her şey taslak. Okuma ve gönderme sizde, kural ve ton burada standart.</p>
+
+<nav role="tablist">
+<button role="tab" aria-selected="true" data-t="cevap">Müşteri Cevap</button>
+<button role="tab" aria-selected="false" data-t="insta">Instagram</button>
+<button role="tab" aria-selected="false" data-t="tiktok">TikTok</button>
+</nav>
+
+<details id="ayar"><summary>Dükkan ayarları</summary>
+<label>Dükkan adı</label><input id="dukkan" placeholder="örn. Bowlera">
+<div class="row"><div><label>Semt</label><input id="semt"></div><div><label>Şehir</label><input id="sehir"></div></div>
+<label>İmza</label><input id="imza" placeholder="örn. Bowlera Ekibi">
+<label>Özel kanal</label><input id="kanal" placeholder="örn. WhatsApp / DM">
+</details>
+
+<section id="cevap" class="on">
+<div class="row"><div><label>Platform</label><select id="plat"><option>Yemeksepeti</option><option>Getir</option><option>Trendyol Yemek</option><option>Google</option><option>Diğer</option></select></div>
+<div><label>Puan</label><select id="puan"><option value="">—</option><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></div></div>
+<label>Ton</label><select id="ton"><option value="a">Otomatik (duruma göre)</option><option value="n">Nötr</option><option value="s">Samimi</option><option value="r">Resmi</option></select>
+<label>Müşteri adı</label><input id="isim">
+<label>Yorum</label><textarea id="yorum" placeholder="Yorumu buraya yapıştırın"></textarea>
+<button class="btn" id="cevapBtn">Cevap taslağı üret</button>
+<div id="cevapOut"></div>
+<details><summary>Cevap şablonlarını düzenle</summary>
+<div id="sablonlar"></div>
+<p class="note">{isim} {imza} {kanal} yer tutucuları otomatik dolar. Düzenlemeler bu cihazda saklanır.</p>
+<button class="btn sec" id="sifirla">Şablonları varsayılana döndür</button>
+</details>
+</section>
+
+<section id="insta">
+<label>Ürün</label><input id="iUrun">
+<label>Amaç</label><select id="iAmac"><option value="acilis">Açılış duyurusu</option><option value="yeni">Yeni ürün</option><option value="kampanya">Kampanya</option><option value="gunun">Günün ürünü</option></select>
+<label>Detay (fiyat, kampanya vb., isteğe bağlı)</label><input id="iDetay">
+<button class="btn" id="iBtn">Gönderi + reklam brief'i üret</button>
+<div id="iOut"></div>
+</section>
+
+<section id="tiktok">
+<label>Ürün</label><input id="tUrun">
+<label>Video türü</label><select id="tTur"><option value="hazir">Hazırlanış</option><option value="isirik">İlk ısırık</option><option value="tepki">Müşteri tepkisi</option><option value="acilis">Açılış günü</option></select>
+<button class="btn" id="tBtn">Video planı üret</button>
+<div id="tOut"></div>
+</section>
+
+<p class="note">Kriz kelime listesi TASLAK, açılıştan sonra gerçek vakalarla gözden geçirin. Niyet ve öncelik etiketleri de TASLAK anahtar kelime eşleşmesidir; yanlış çıkarsa taslağı elle düzeltin. Reklamı platformda siz açarsınız; bu sayfa yalnızca metin üretir.</p>
+</main>
+
+<script>
+// pusula_acilis_asistani — cevap motoru
+// Amaç:    yorumdan kategori + müşteri niyeti çıkarıp taslak cevap üretmek (yalnızca metin, AI çağrısı yok)
+// Bağlı:   tarayıcı localStorage (ayar, sablon2); dış API yok
+// Risk:    yanlış kategori/niyet → uygunsuz taslak; kriz listesi kaçırırsa riskli yorum şablona düşer
+// Dokunma: KR (kriz) kontrolü her zaman şablondan ÖNCE çalışmalı; niyet eşleşmeleri TASLAK
+const $=id=>document.getElementById(id);
+const TN={a:"Otomatik",s:"Samimi",n:"Nötr",r:"Resmi"};
+const KR=[
+["saglik","Gıda zehirlenmesi / sağlık","zehirlen,hastalan,kust,ishal,hastane,acil servis,midem bozul,rahatsizlan","Sağlık iddiası: sipariş ve ürün kayıtlarını saklayın. Gıda güvenliği şikayetleri ALO 174'e bildirilebilir."],
+["yabanci","Yabancı cisim","sac$,saci,sacim,kil$,cam$,camdan,metal,plastik parca,bocek,sinek$,yabanci cisim,yabanci madde,icinden cikti,parca cikti","Fotoğraf ve ambalajı saklayın; kişisel bilgiyi herkese açık yorumda istemeyin."],
+["alerjik","Alerjik reaksiyon","alerjik reaksiyon,alerjim tuttu,nefes,sisti,siste,anafilaksi,dokuntu","Tıbbi güvence vermeyin; ürün içeriğini kayıttan kontrol edin."],
+["hukuk","Hukuki tehdit","dava,mahkeme,avukat,hukuki,hakem heyeti,savcilik,noter,sikayet edecegim","Polemiğe girmeyin; kayıtları saklayın, gerekirse hukuki destek alın."],
+["basin","Basın / ifşa tehdidi","gazeteci,basin,haber yap,medyaya,ifsa,viral,sosyal medyada paylas","Tartışmaya girmeyin; ekran görüntülerini saklayın."]];
+const CAT=[
+["olumlu","Olumlu","harika,mukemmel,bayildim,efsane,lezzetli,super,tesekkur,ellerinize,tavsiye,10 numara,cok guzel,guzeldi,memnun",
+"{isim}, çok teşekkür ederiz! Beğenmenize sevindik, afiyet olsun, yine bekleriz. {imza}",
+"{isim}, geri bildiriminiz için teşekkür ederiz. Memnun kalmanıza sevindik. {imza}",
+"Sayın {isim}, değerli geri bildiriminiz için teşekkür ederiz. Memnuniyetiniz bizi mutlu etti. {imza}",
+"Puan karşılığı vaat, rakip kıyası.","Yorumda sorun da varsa o kategoriye bakın."],
+["genel","Genel","",
+"{isim}, geri bildiriminiz için teşekkür ederiz. Daha iyi hizmet için değerlendireceğiz. {imza}",
+"{isim}, değerlendirmeniz için teşekkür ederiz, ilgili ekiple paylaşacağız. {imza}",
+"Sayın {isim}, geri bildiriminiz kayıt altına alınmıştır, teşekkür ederiz. {imza}",
+"Savunmaya geçmek.","Somut hata varsa kategoriyi seçin."],
+["detaysiz","Detaysız 1 yıldız","",
+"{isim}, üzgünüz. Neyin yolunda gitmediğini {kanal} üzerinden paylaşırsanız çözmek isteriz. {imza}",
+"{isim}, değerlendirmeniz için teşekkür ederiz. Sorunu öğrenirsek inceleyebiliriz. {imza}",
+"Sayın {isim}, değerlendirmeniz ulaştı. Sorunu öğrenebilmemiz için ayrıntı paylaşmanızı rica ederiz. {imza}",
+"'Neden 1 verdiniz?' demek.","Tek başına gerekmez."],
+["alerjen","Alerjen / özel beslenme","alerjen,alerji,fistik,findik,gluten,laktoz,colyak,susam,vegan,vejetaryen,helal,icindekiler,sut urunu",
+"{isim}, alerjen bilgisi bizim için önemli; içeriği kontrol etmeden 'içermez' demek istemeyiz. Ürün adını {kanal} üzerinden iletirseniz teyit edelim. {imza}",
+"{isim}, alerjen konusunda doğrulanmamış bilgi vermiyoruz. Ürün adını özel olarak iletirseniz içeriği kontrol edip dönelim. {imza}",
+"Sayın {isim}, alerjen bilgisi güncel içerik teyidiyle paylaşılır. Ürün adını {kanal} üzerinden iletmenizi rica ederiz. {imza}",
+"'Kesin yok', 'çapraz bulaş olmaz'.","İçerik belirsizse mutlaka insan."],
+["cig","Çiğ / az pişmiş","cig$,az pismis,pismemis,ici kirmizi,kanli",
+"{isim}, bildiriminizi ciddiye alıyoruz. Ürünü tüketmemenizi ve sipariş bilgilerinizi {kanal} üzerinden iletmenizi rica ederiz. {imza}",
+"{isim}, çiğ/az pişmiş ürün bildirimi gıda güvenliği kapsamında ele alınacaktır. Lütfen {kanal} üzerinden yazın. {imza}",
+"Sayın {isim}, bildiriminiz gıda güvenliği kapsamında yetkiliye aktarılacaktır. Ayrıntıyı {kanal} üzerinden iletmenizi rica ederiz. {imza}",
+"'Bir şey olmaz', sağlık güvencesi.","Hemen: kendiniz değerlendirin."],
+["hijyen","Hijyen","hijyen,pis$,kirli,temiz degil,mikrop,eldiven",
+"{isim}, bu geri bildirimi ciddiye alıyoruz. Belirttiğiniz noktayı kontrol edeceğiz, ayrıntıyı {kanal} üzerinden alalım. {imza}",
+"{isim}, hijyenle ilgili bildiriminizi aldık, süreçleri kontrol edeceğiz. {imza}",
+"Sayın {isim}, bildiriminiz iç inceleme kapsamında değerlendirilecektir. {imza}",
+"'Bizde olamaz'.","Hemen: yabancı madde/hastalık varsa kriz."],
+["odeme","İade / ödeme","iade,param,cift cekim,geri odeme,kartima,tahsil,fatura",
+"{isim}, ödeme/iade sorununuzu anlıyoruz. İlgili kanaldan kontrol gerekiyor, {kanal} üzerinden bilgi iletebilirsiniz. {imza}",
+"{isim}, iade/ücret bildiriminizi aldık. Ödeme durumunun platform üzerinden kontrolünü rica ederiz. {imza}",
+"Sayın {isim}, ücret iadesi ödeme sağlayıcısı ve platform prosedürüne tabi olabilir; sipariş bilgilerinizle destek kanalına başvurmanızı rica ederiz. {imza}",
+"İade tarihi sözü.","Çift tahsilat, yüksek tutar, hukuki iddia."],
+["teslim","Teslim edildi ama gelmedi","teslim edildi,kapi calmadi,adrese gelmedi,aramadi",
+"{isim}, siparişiniz ulaşmadan 'teslim edildi' görünmesi kötü bir durum, üzgünüz. Kayıtları kontrol edeceğiz, {kanal} üzerinden yazar mısınız? {imza}",
+"{isim}, teslim edilmeyen siparişle ilgili bildiriminizi aldık. Teslimat kaydını kontrol edeceğiz. {imza}",
+"Sayın {isim}, teslimat durumundaki uyumsuzluk için özür dileriz. Konu incelenecektir. {imza}",
+"'Bekleyin gelir'.","Ödeme alınmış ve ürün gelmemişse hemen."],
+["kurye","Kurye davranışı","kurye kaba,kurye saygisiz,bagirdi,hakaret etti,tersledi,kufur,saygisiz",
+"{isim}, yaşadığınız iletişim için üzgünüz. Bildiriminizi ciddiye alıyor, süreci inceletiyoruz. {imza}",
+"{isim}, kurye davranışına ilişkin bildiriminizi aldık, ilgili birimle paylaşacağız. {imza}",
+"Sayın {isim}, bildiriminiz teslimat personeli davranışı kapsamında incelenmek üzere aktarılacaktır. {imza}",
+"Kurye suçlaması, 'işten attık' gibi doğrulanmamış bilgi.","Hakaret, tehdit, güvenlik olayı iddiasında hemen."],
+["eksik","Eksik ürün","eksik,unutul,sos yok,icecek yok,gelmedi",
+"{isim}, eksik çıkan ürün için üzgünüz. Sipariş numaranızla {kanal} üzerinden yazarsanız hemen bakalım. {imza}",
+"{isim}, eksik ürün için özür dileriz. Sipariş kaydını kontrol edeceğiz. {imza}",
+"Sayın {isim}, siparişinizdeki eksiklik için özür dileriz. Hazırlama süreci incelenecektir. {imza}",
+"'Müşteri unutmuştur'.","Yüksek tutar veya tekrar eden eksik."],
+["yanlis","Yanlış ürün","yanlis,baska urun,farkli geldi,karismis,istemedim",
+"{isim}, yanlış ürün ulaştığı için üzgünüz. Hazırlama sürecini kontrol edeceğiz, {kanal} üzerinden yazarsanız çözelim. {imza}",
+"{isim}, yanlış ürün için özür dileriz. Sipariş kaydını inceleyeceğiz. {imza}",
+"Sayın {isim}, yanlış ürün tesliminden dolayı özür dileriz. Hazırlık süreci kontrol edilecektir. {imza}",
+"Müşteriyi suçlamak.","Alerjen/özel diyet ürünü yanlışsa hemen."],
+["not","Sipariş notu","not yazdim,notumu,dikkate alinmad,okumamis,sipariş notu,siparis notu",
+"{isim}, sipariş notunuz dikkate alınmadığı için üzgünüz. Hazırlama ekibimizle paylaşacağız. {imza}",
+"{isim}, notunuzun uygulanmadığına dair bildiriminizi aldık, süreci kontrol edeceğiz. {imza}",
+"Sayın {isim}, özel talebinizin karşılanmaması için özür dileriz. {imza}",
+"'Notu görmedik' deyip geçmek.","Alerji/sağlık notuysa hemen."],
+["gecikme","Gecikme","gec$,gecik,bekledi,saattir,uzun surdu,beklettiniz,dakika",
+"{isim}, siparişiniz geç ulaştığı için üzgünüz. Nerede aksadığını kontrol edeceğiz, {kanal} üzerinden yazabilirsiniz. {imza}",
+"{isim}, gecikme için özür dileriz. Süreci kontrol ederek ilgili ekiple paylaşacağız. {imza}",
+"Sayın {isim}, teslimat süresiyle ilgili bildiriminiz alınmıştır. Yaşanan gecikme için özür dileriz. {imza}",
+"Suçu kuryeye/havaya atmak; doğrulamadan platformu suçlamak.","Çok uzun gecikme, tekrar eden şikayet, zarar iddiası."],
+["soguk","Soğuk gelen","soguk,buz gibi,ilik,sicak degil,sogumus",
+"{isim}, yemeğiniz istediğiniz sıcaklıkta ulaşmadığı için üzgünüz. Hazırlama ve teslimat sürecini kontrol edeceğiz. {imza}",
+"{isim}, sıcaklıkla ilgili geri bildiriminiz için teşekkürler. Süreci kontrol edeceğiz. {imza}",
+"Sayın {isim}, ürün sıcaklığına ilişkin bildiriminiz değerlendirilecektir. Özür dileriz. {imza}",
+"'Yolda soğur, normal'.","Tekrarlayan şikayet veya gıda güvenliği iddiası."],
+["dokulme","Dökülme / paketleme","dokul,sizmis,akmis,ezilmis,poset batti,kapak acik,ambalaj,paketleme",
+"{isim}, siparişinizin dökülmüş/hasarlı gelmesine üzüldük. Paketleme noktasını kontrol edeceğiz. {imza}",
+"{isim}, ambalaj sorunu için özür dileriz. Paketleme ve taşıma sürecini inceleyeceğiz. {imza}",
+"Sayın {isim}, ambalaj bütünlüğüyle ilgili bildiriminiz için özür dileriz. Süreç değerlendirilecektir. {imza}",
+"'Siz açtınız', 'kurye düşürdü'.","Birden fazla ürün kullanılamazsa."],
+["porsiyon","Porsiyon","porsiyon,gramaj,doymadim,yetersiz,cok az$,kucuk",
+"{isim}, porsiyon beklentinizi karşılamadığı için üzgünüz. Gramaj standardımızı yeniden kontrol edeceğiz. {imza}",
+"{isim}, porsiyon geri bildiriminiz için teşekkürler, ürün standardımızla karşılaştıracağız. {imza}",
+"Sayın {isim}, porsiyon bildiriminiz mutfak yönetimine iletilecektir. {imza}",
+"'Herkese yetiyor'.","Gramaj sistematik farklıysa."],
+["lezzet","Lezzet / tazelik","lezzetsiz,tatsiz,yavan,tuzlu,yagli,berbat,damak,tadi kotu,beginmedim,bayat,taze degil,yanmis,yanik",
+"{isim}, beklentinizi karşılayamadığımız için üzgünüz. Mutfak ekibimizle paylaşacağız. {imza}",
+"{isim}, geri bildiriminiz için teşekkürler, ürünü yeniden değerlendireceğiz. {imza}",
+"Sayın {isim}, değerlendirmeniz kayıt altına alınmıştır. {imza}",
+"'Damak zevkiniz', 'karamelize'.","Bozulma/koku/ekşime iddiasında hemen."],
+["fiyat","Fiyat","pahali,fiyat,zam$,zamli,degmez,fahis",
+"{isim}, fiyat konusundaki görüşünüz için teşekkür ederiz. Dikkate alacağız. {imza}",
+"{isim}, fiyatlandırmayla ilgili geri bildiriminizi aldık, değerlendireceğiz. {imza}",
+"Sayın {isim}, fiyat değerlendirmeniz ilgili ekiple paylaşılacaktır. {imza}",
+"Rakip küçümsemek, maliyet uydurmak.","Menüde yanlış fiyat gösterilmişse."],
+["hakaret","Hakaret / küfür","serefsiz,hirsiz,dolandirici,geber,sahtekar,rezil",
+"{isim}, sorunu çözmek isteriz. Karşılıklı saygı çerçevesinde iletişim kurarsak yardımcı oluruz. {imza}",
+"{isim}, somut sorunu değerlendirmeye hazırız; iletişimi saygı çerçevesinde sürdürmenizi rica ederiz. {imza}",
+"Sayın {isim}, hizmet sorununu değerlendirmeye hazırız. Hakaret içeren ifadelere platform kuralları uygulanabilir. {imza}",
+"Aynı sertlikle yanıt vermek.","Tehdit veya güvenlik riski."],
+["sahte","Haksız / sahte yorum","hic siparis vermedim,sahte,rakip,fake,alakasi yok,burada olmadim,baska restoran",
+"{isim}, bu deneyimin bir siparişimizle eşleştiğini doğrulayamadık. Sipariş bilginizi {kanal} üzerinden paylaşırsanız bakalım. {imza}",
+"{isim}, yorumun gerçek bir siparişle ilişkisini doğrulayamıyoruz; platformun inceleme mekanizmasına başvuracağız. {imza}",
+"Sayın {isim}, yorum kayıtlarımızla eşleşmemektedir. Platform üzerinden değerlendirme talep edilecektir. {imza}",
+"'Sahtekârsınız'; kimseyi ifşa etmek.","Puanı ciddi etkiliyorsa veya sistematikse."],
+["coklu","Çoklu / karışık şikayet","",
+"{isim}, ayrıntılı mesajınız için teşekkür ederiz. Belirttiğiniz sorunları ilgili ekiple ayrı ayrı değerlendireceğiz. {kanal} üzerinden yazarsanız telafiyi konuşalım. {imza}",
+"{isim}, yaşadığınız birden fazla sorun için özür dileriz. Her maddeyi ayrı değerlendireceğiz. {imza}",
+"Sayın {isim}, detaylı bildiriminiz kayıt altına alınmıştır; hususlar ilgili süreçlerde değerlendirilecektir. {imza}",
+"Yalnızca olumlu ya da olumsuz kısma yanıt vermek.","Çoklu hata, hukuki veya sağlık iddiası."]];
+const PN={"Yemeksepeti":"Cevaplar platform tarafından kontrol edilip yayımlanabilir; hakaret/tehdit içeren yorumda tartışmayın, platform bildirimini kullanın.","Getir":"Kısa tutun; iade ve ödeme işlemlerini platform desteğine yönlendirin.","Trendyol Yemek":"Cevap kuralları DOĞRULANAMADI; yayınlanmazsa kısaltıp yeniden deneyin.","Google":"Müşterinin kişisel bilgisini yazmayın; sahte/teşvikli yorum Google'da raporlanabilir.","Diğer":""};
+const hit=(t,l)=>l.split(",").find(p=>{const e=p.endsWith("$"),q=(e?p.slice(0,-1):p).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return new RegExp("(^|[^a-z0-9])"+q+(e?"($|[^a-z0-9])":"")).test(t)});
+const norm=s=>(s||"").toLocaleLowerCase("tr").replace(/ç/g,"c").replace(/ğ/g,"g").replace(/ı/g,"i").replace(/ö/g,"o").replace(/ş/g,"s").replace(/ü/g,"u");
+const INT=[
+["terk","bir daha sipariş vermeme kararı","bir daha siparis,bir daha almam,bir daha gelmem,son siparis,vazgectim,uygulamadan sil",
+{s:"Sizi yeniden ağırlama fırsatı verirseniz çok seviniriz.",n:"Tekrar değerlendirme fırsatı verirseniz memnun oluruz.",r:"Tekrar hizmet verebilme fırsatı için iletişime açığız."}],
+["telafi","telafi / iade talebi","iade istiyorum,param iade,parami,paramimi,telafi,tazmin,ucret iadesi,geri odeme istiyorum",
+{s:"Talebinizi inceleyip size dönelim.",n:"Talebiniz incelenerek size dönüş yapılacaktır.",r:"Talebiniz incelenerek tarafınıza dönüş yapılacaktır."}],
+["cozum","geri dönüş bekliyor","arayin,donus yapin,ulasin,iletisime gecin,cevap verin,bekliyorum",
+{s:"Size en kısa sürede dönmek isteriz.",n:"Size dönüş yapılması için ilgili ekiple paylaşacağız.",r:"Tarafınıza dönüş yapılması için konu ilgili ekibe aktarılacaktır."}],
+["oneri","öneri / istek","keske,oneri,eklense,olsa iyi,yapsaniz",
+{s:"Önerinizi ekibimizle paylaşacağız.",n:"Önerinizi ilgili ekiple paylaşacağız.",r:"Öneriniz ilgili birimlerle paylaşılacaktır."}]];
+const HIGH=["alerjen","cig","hijyen","teslim"];
+function niyet(y){const r=INT.filter(i=>hit(y,i[2])).map(i=>i[0]);if(y.includes("?")||hit(y,"neden,nasil,ne zaman,niye"))r.push("soru");return r}
+function niyetAd(id){return id==="soru"?"soru soruyor (taslak soruyu yanıtlamaz, cevabı elle ekleyin)":INT.find(i=>i[0]===id)[1]}
+function otoTon(ni,p,id){if(ni.includes("terk")||ni.includes("telafi")||HIGH.includes(id))return"r";return(p>=4||id==="olumlu")?"s":"n"}
+function oncelik(ni,id,p){if(HIGH.includes(id)||ni.includes("terk"))return["Yüksek","hemen ele alın"];if(ni.includes("telafi")||ni.includes("cozum")||(p&&p<=2))return["Orta","gün içinde dönün"];return["Düşük","rutin"]}
+function ekle(ni,id,tn,tpl){const k=INT.find(i=>ni.includes(i[0]));
+ if(!k||(id==="olumlu"&&k[0]!=="oneri")||(/\{kanal\}/.test(tpl)&&["telafi","cozum"].includes(k[0])))return tpl;
+ const e=k[3][tn];return tpl.includes("{imza}")?tpl.replace("{imza}",e+" {imza}"):tpl+" "+e}
+let S={},TPL={},ED={};
+function lget(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
+function lset(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function low(s){return (s||"").toLocaleLowerCase("tr")}
+function init(){
+ S=lget("ayar",{});ED=lget("sablon2",{});CAT.forEach(c=>["s","n","r"].forEach((t,i)=>{TPL[c[0]+"."+t]=ED[c[0]+"."+t]||c[3+i]}));
+ ["dukkan","semt","sehir","imza","kanal"].forEach(k=>{$(k).value=S[k]||"";$(k).addEventListener("input",()=>{S[k]=$(k).value;lset("ayar",S)})});
+ const w=$("sablonlar");
+ CAT.forEach(c=>{const d=document.createElement("details");d.innerHTML="<summary>"+c[1]+"</summary>";
+  ["s","n","r"].forEach(t=>{const k=c[0]+"."+t,l=document.createElement("label");l.textContent=TN[t];const a=document.createElement("textarea");a.value=TPL[k];
+   a.addEventListener("input",()=>{TPL[k]=a.value;ED[k]=a.value;lset("sablon2",ED)});d.append(l,a)});w.append(d)});
+  document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id===b.dataset.t))});
+ $("cevapBtn").onclick=cevap;$("iBtn").onclick=insta;$("tBtn").onclick=tiktok;
+ let sf=0;$("sifirla").onclick=function(){if(!sf){sf=1;this.textContent="Emin misiniz? Tekrar dokunun";return}lset("sablon2",{});location.reload()};
+}
+function out(el,html){el.innerHTML=html}
+function kutu(baslik,metin,tag){const id="k"+Math.random().toString(36).slice(2,8);
+ return `<div class="box">${tag?`<span class="tag">${tag}</span>`:""}<strong>${baslik}</strong><pre id="${id}">${esc(metin)}</pre><button class="btn sec" onclick="kopyala('${id}',this)">Kopyala</button></div>`}
+function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+function kopyala(id,b){const t=$(id).textContent;
+ const ok=()=>{b.textContent="Kopyalandı";setTimeout(()=>b.textContent="Kopyala",1500)};
+ try{navigator.clipboard.writeText(t).then(ok,()=>fb(t,ok))}catch(e){fb(t,ok)}}
+function fb(t,ok){try{const a=document.createElement("textarea");a.value=t;document.body.append(a);a.select();document.execCommand("copy");a.remove();ok()}catch(e){}}
+function cevap(){
+ const y=norm($("yorum").value),puan=parseInt($("puan").value)||0,el=$("cevapOut"),ton=$("ton").value,plat=$("plat").value;
+ if(!y.trim()){out(el,'<div class="box warn">Önce yorumu yapıştırın.</div>');return}
+ const kr=KR.filter(k=>hit(y,k[2]));
+ if(kr.length){out(el,`<div class="box warn">⚠️ ${kr.map(k=>esc(k[1])).join(" + ")} işareti. Şablon üretilmedi, yanıtı sizin yazmanız gerekir.<br><br>${kr.map(k=>esc(k[3])).join("<br>")}<br><br>Telafi sözü vermeyin; kusur kabulü sayılabilecek ifadelerden kaçının (gerekirse hukuki görüş alın).</div>`);return}
+ const m=CAT.filter(c=>c[2]&&c[0]!=="olumlu"&&hit(y,c[2])),pri=m.find(c=>["alerjen","cig","hijyen"].includes(c[0]));
+ let id;
+ if(pri)id=pri[0];else if(m.length>1)id="coklu";else if(m.length)id=m[0][0];
+ else if(puan>=4||(!puan&&hit(y,CAT[0][2])))id="olumlu";
+ else id=(puan===1&&y.length<20)?"detaysiz":"genel";
+ const c=CAT.find(x=>x[0]===id),isim=$("isim").value.trim(),ni=niyet(y),tn=ton==="a"?otoTon(ni,puan,id):ton;
+ const nl=ni.map(niyetAd).join("; ")||"belirgin bir talep yok",o=oncelik(ni,id,puan),es=((c[2]&&hit(y,c[2]))||"").replace("$","");
+ const t=ekle(ni,id,tn,TPL[id+"."+tn]).replace(/Sayın \{isim\}/g,isim?"Sayın "+isim:"Sayın müşterimiz").replace(/\{isim\},/g,isim?isim+",":"Merhaba,").replace(/\{isim\}/g,isim).replace(/\{imza\}/g,S.imza||"").replace(/\{kanal\}/g,S.kanal||"özel mesaj");
+ const ek=m.length>1?`<br><b>Algılanan konular:</b> ${m.map(x=>x[1]).join(", ")}. Taslağı buna göre düzenleyin.`:"";
+ out(el,kutu("Cevap taslağı ("+plat+", "+TN[tn]+")",t.trim(),c[1])+`<p class="note"><b>Niyet:</b> ${nl}<br><b>Öncelik:</b> ${o[0]} (${o[1]})${es?`<br><b>Eşleşen ifade:</b> ${es}`:""}<br><b>Söylenmemeli:</b> ${c[6]}<br><b>İnsana devir:</b> ${c[7]}${ek}<br>${PN[plat]} Karakter sınırı DOĞRULANAMADI, panelin izin verdiği uzunluğa göre kısaltın.</p>`);
+}
+function tag(s){return "#"+low(s).replace(/ı/g,"i").replace(/[^a-z0-9ğüşöç]/g,"")}
+function tags(...a){return [...new Set(a.filter(x=>x&&x.trim()).map(tag).filter(x=>x.length>1))].join(" ")}
+function insta(){
+ const u=$("iUrun").value.trim(),el=$("iOut");
+ if(!u){out(el,'<div class="box warn">Ürün adını girin.</div>');return}
+ const d=$("iDetay").value.trim(),yer=S.semt?`📍 ${S.semt}${S.sehir?", "+S.sehir:""}`:"";
+ const A={acilis:`Kapılarımızı açtık! 🎉 ${u} ile başlıyoruz. ${d}`,yeni:`Yeni: ${u} 🔥 ${d} Denemek için bekleriz.`,kampanya:`${u} için ${d} Kaçırmayın!`,gunun:`Günün lezzeti: ${u} 😋 ${d}`};
+ const cap=(A[$("iAmac").value]+"\n"+yer).replace(/ +\n/g,"\n").trim()+"\n\n"+tags(S.dukkan,S.semt,S.sehir,"yemek",u);
+ const brief=`Hedef: dükkan çevresi (yarıçapı siz belirleyin)\nKreatif: ${u} için net bir fotoğraf ya da kısa video (siz yüklersiniz)\nÇağrı: "Hemen sipariş ver" ya da "Bizi ziyaret et"\nBütçe: kendi belirlediğiniz günlük limit\nÖlçüm: kampanyaya özel kod ya da "Instagram'dan geldim"`;
+ out(el,kutu("Gönderi metni",cap)+kutu("Reklam brief'i",brief));
+}
+function tiktok(){
+ const u=$("tUrun").value.trim(),el=$("tOut");
+ if(!u){out(el,'<div class="box warn">Ürün adını girin.</div>');return}
+ const T={
+ hazir:{hook:`${u} nasıl hazırlanıyor? Sonuna kadar izle.`,s:["Yakın çekim: bitmiş ürün (ilk 2 saniye)","Malzemeler tek karede","Hazırlama anı, sesi açık","Servis ve ilk bakış","Konum ve çağrı: gel, dene"]},
+ isirik:{hook:`${u} ilk ısırık tepkisi.`,s:["Ürün masada, sessiz bir an","Kesme ya da açma anı","Isırık, yüz ifadesi","Yorum cümlesi (tek cümle)","Konum ve çağrı"]},
+ tepki:{hook:`Müşterilerimiz ${u} için ne dedi?`,s:["İzinli müşteri ilk tepkisi","Ürün yakın çekim","İkinci müşteri ya da ekip yorumu","En güzel cümle ekranda yazı olarak","Konum ve çağrı"]},
+ acilis:{hook:`Açıldık! İlk gün ${u} ile.`,s:["Kapı açılışı ya da tabela","İçeriden kısa gezinti","${u} hazırlığı","İlk müşteri izinliyse tepki","Konum, saat ve çağrı"]}}[$("tTur").value];
+ const plan=T.s.map((x,i)=>`${i+1}. ${x.replace("${u}",u)}`).join("\n");
+ const baslik=`${u} 😋${S.semt?" "+S.semt+"'te":""}\n${tags(S.dukkan,S.semt,S.sehir,"yemek",u)}`;
+ out(el,kutu("İlk 2 saniyede söylenecek cümle",T.hook)+kutu("Sahneler (15-25 sn)",plan)+kutu("Başlık ve etiketler",baslik));
+}
+init();
+</script>
+</body>
+</html>
