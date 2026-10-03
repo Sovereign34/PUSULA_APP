@@ -8,7 +8,7 @@ import { withTimeout } from './util.mjs'
 const CHECKLIST = 'Veto if the reply: promises refund/compensation/outcome; blames customer, courier, platform or weather; ' +
   'gives allergen/health/safety assurance; contains personal data or contact details; is defensive or argumentative; ' +
   'does not match the stated customer intent or category. Veto if unsure.'
-export function createReviewer(model, { timeoutMs = 3000 } = {}) {
+export function createReviewer(model, { timeoutMs }) {
   return {
     async review(decision, event) {
       const prompt = 'You are a strict Critic of Turkish restaurant review replies. ' + CHECKLIST +
